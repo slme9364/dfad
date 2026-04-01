@@ -1,5 +1,7 @@
-import { exec } from 'node:child_process';
+import { exec, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const execAsync = promisify(exec);
 
@@ -112,4 +114,67 @@ export async function getLogcat(lines: number = 200, filterText?: string): Promi
   } catch (error: any) {
     throw new Error(`Logcatの取得に失敗しました: ${error.message}`);
   }
+}
+
+let isRecording = false;
+
+/**
+ * Starts screen recording on the device.
+ */
+export async function startRecording(): Promise<void> {
+  if (isRecording) {
+    throw new Error('既に録画中です。');
+  }
+  
+  // 古い録画ファイルを削除
+  await adbExec('shell rm -f /sdcard/mcp_record.mp4').catch(() => {});
+  
+  // バックグラウンドで録画開始
+  const proc = spawn('adb', ['shell', 'screenrecord', '/sdcard/mcp_record.mp4'], {
+    stdio: 'ignore',
+    detached: true,
+  });
+  proc.unref();
+  
+  isRecording = true;
+}
+
+/**
+ * Stops screen recording and pulls the mp4 file to the local ./records/ directory.
+ * Returns the absolute path of the saved video.
+ */
+export async function stopRecording(): Promise<string> {
+  if (!isRecording) {
+    throw new Error('録画は実行されていません。');
+  }
+
+  try {
+    // デバイス上のscreenrecordプロセスにSIGINT(2)を送り、安全に保存させる
+    await adbExec('shell killall -2 screenrecord').catch(async () => {
+      // killallが存在しない場合のため、pidofを利用したkillも試行
+      await adbExec('shell "kill -2 \\$(pidof screenrecord)"').catch(() => {});
+    });
+  } catch (e) {
+    // 無視
+  }
+  
+  // 動画ファイルの生成完了を少し待機
+  await new Promise(r => setTimeout(r, 3000));
+
+  const recordsDir = path.join(process.cwd(), 'records');
+  if (!fs.existsSync(recordsDir)) {
+    fs.mkdirSync(recordsDir, { recursive: true });
+  }
+
+  const filename = `record_${Date.now()}.mp4`;
+  const localPath = path.join(recordsDir, filename);
+
+  try {
+    await execAsync(`adb pull /sdcard/mcp_record.mp4 "${localPath}"`);
+  } catch(error: any) {
+     throw new Error(`動画の保存(pull)に失敗しました: ${error.message}`);
+  }
+  
+  isRecording = false;
+  return localPath;
 }

@@ -18,6 +18,8 @@ import {
   launchApp,
   clearLogcat,
   getLogcat,
+  startRecording,
+  stopRecording,
 } from './adb.js';
 
 const server = new Server(
@@ -125,6 +127,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
         },
       },
+      {
+        name: 'start_recording',
+        description: '端末の画面録画(mp4)をバックグラウンドで開始します。人間が確認するためのエビデンスとして利用します。(動画自体はAIには返されずローカルPCに保存されます)',
+        inputSchema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'stop_recording',
+        description: '開始した画面録画を停止し、ローカルPCのrecordsディレクトリ内にmp4ファイルとして自動保存します。',
+        inputSchema: { type: 'object', properties: {} },
+      },
     ],
   };
 });
@@ -211,6 +223,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       const logs = await getLogcat(parsed.data.lines, parsed.data.filterText);
       return { content: [{ type: 'text', text: logs || 'No matching logs found.' }] };
+    }
+
+    if (name === 'start_recording') {
+      await startRecording();
+      return { content: [{ type: 'text', text: 'Recording started successfully. Remember to call stop_recording when done.' }] };
+    }
+
+    if (name === 'stop_recording') {
+      const savedPath = await stopRecording();
+      return { content: [{ type: 'text', text: `Recording stopped. The video has been saved locally to: ${savedPath}` }] };
     }
 
     throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
