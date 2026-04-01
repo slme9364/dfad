@@ -89,3 +89,27 @@ export async function keyEvent(keycode: number | string): Promise<void> {
 export async function launchApp(packageName: string): Promise<void> {
   await adbExec(`shell monkey -p ${packageName} -c android.intent.category.LAUNCHER 1`);
 }
+
+/**
+ * Clears the logcat buffer.
+ */
+export async function clearLogcat(): Promise<void> {
+  await adbExec('logcat -c');
+}
+
+/**
+ * Gets recent logcat output, optionally filtered by text.
+ */
+export async function getLogcat(lines: number = 200, filterText?: string): Promise<string> {
+  try {
+    const result = await adbExec(`logcat -d -t ${lines}`);
+    let linesArr = result.split('\n');
+    if (filterText) {
+      const lowerFilter = filterText.toLowerCase();
+      linesArr = linesArr.filter(line => line.toLowerCase().includes(lowerFilter));
+    }
+    return linesArr.join('\n');
+  } catch (error: any) {
+    throw new Error(`Logcatの取得に失敗しました: ${error.message}`);
+  }
+}

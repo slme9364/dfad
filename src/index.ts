@@ -16,6 +16,8 @@ import {
   inputText,
   keyEvent,
   launchApp,
+  clearLogcat,
+  getLogcat,
 } from './adb.js';
 
 const server = new Server(
@@ -46,6 +48,11 @@ const KeyEventSchema = z.object({
 
 const LaunchAppSchema = z.object({
   packageName: z.string().describe('The package name of the app to launch (e.g., com.example.app)'),
+});
+
+const GetLogcatSchema = z.object({
+  lines: z.number().int().optional().describe('Number of recent log lines to fetch. Default is 200.'),
+  filterText: z.string().optional().describe('Optional text to filter the log output. Case-insensitive.'),
 });
 
 // Register tools list
@@ -100,6 +107,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             packageName: { type: 'string', description: 'The package name of the app to launch (e.g., com.example.app)' },
           },
           required: ['packageName'],
+        },
+      },
+      {
+        name: 'clear_logcat',
+        description: 'AndroidのLogcatバッファをクリアします。テスト開始前や特定のアクション前に呼び出すことで、過去の古いログを取得対象から除外し、クリーンな状態で検証できるようにします。',
+        inputSchema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'get_logcat',
+        description: 'AndroidのLogcatから直近のログを取得します。アプリのクラッシュやエラー(FATAL EXCEPTION)、出力された通信ログなどの内部状態を検証するために使用します。',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            lines: { type: 'number', description: 'Number of recent log lines to fetch. Default is 200.' },
+            filterText: { type: 'string', description: 'Optional text to filter the log output. Case-insensitive.' },
+          },
         },
       },
     ],
@@ -174,6 +197,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       await launchApp(parsed.data.packageName);
       return { content: [{ type: 'text', text: `Launched app matching package: ${parsed.data.packageName}` }] };
+    }
+
+    if (name === 'clear_logcat') {
+      await clearLogcat();
+      return { content: [{ type: 'text', text: 'Logcat buffer cleared successfully.' }] };
+    }
+
+    if (name === 'get_logcat') {
+      const parsed = GetLogcatSchema.safeParse(args);
+      if (!parsed.success) {
+        throw new McpError(ErrorCode.InvalidParams, `Invalid arguments: ${parsed.error.message}`);
+      }
+      const logs = await getLogcat(parsed.data.lines, parsed.data.filterText);
+      return { content: [{ type: 'text', text: logs || 'No matching logs found.' }] };
     }
 
     throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
