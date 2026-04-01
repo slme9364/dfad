@@ -54,7 +54,7 @@ async function main() {
       console.log('\n⚙️ Configuring for Claude Code (CLI)...');
       try {
         console.log('claudeコマンドを実行して、グローバル(全プロジェクト共通)に追加しています...');
-        const result = execSync(`claude mcp add dfad -g node "${absoluteServerPath}"`, { cwd: rootDir, encoding: 'utf-8' });
+        const result = execSync(`claude mcp add -s user dfad node "${absoluteServerPath}"`, { cwd: rootDir, encoding: 'utf-8' });
         console.log(result);
         console.log('✅ Claude Code へのグローバル追加が完了しました！');
         console.log('👉 次に任意のディレクトリで `claude mcp list` を実行すれば、「dfad」が追加されていることを確認できます。');
@@ -62,7 +62,7 @@ async function main() {
       } catch (e) {
         console.log('\n❌ [エラー] claude コマンドの実行に失敗しました。');
         console.log('Claude Codeがインストールされていないか、PATHが通っていない可能性があります。');
-        console.log(`もしくは、-g フラグがサポートされていないバージョンの可能性があります。手動で追加する場合は、システム上のターミナルで以下を実行してください:\n  claude mcp add dfad -g node "${absoluteServerPath}"`);
+        console.log(`手動で追加する場合は、システム上のターミナルで以下を実行してください:\n  claude mcp add -s user dfad node "${absoluteServerPath}"`);
       }
       break;
 
