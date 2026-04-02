@@ -164,10 +164,27 @@ export async function getLogcat(lines: number = 200, filterText?: string, packag
  */
 export async function getTopActivity(): Promise<string> {
   try {
-    const out = await adbExec('shell dumpsys window windows');
-    const lines = out.split('\n');
-    const focusLine = lines.find(line => line.includes('mCurrentFocus') || line.includes('mFocusedApp'));
-    return focusLine ? focusLine.trim() : 'Unknown Activity';
+    // 1. First try activity dump (Reliable on Android 10+)
+    const actOut = await adbExec('shell dumpsys activity activities').catch(() => '');
+    if (actOut) {
+      const actLines = actOut.split('\n');
+      const resumedLine = actLines.find(line => line.includes('mResumedActivity') || line.includes('topResumedActivity'));
+      if (resumedLine && !resumedLine.includes('null')) {
+        return resumedLine.trim();
+      }
+    }
+
+    // 2. Fallback to window dump (Reliable on older Androids)
+    const winOut = await adbExec('shell dumpsys window windows').catch(() => '');
+    if (winOut) {
+      const winLines = winOut.split('\n');
+      const focusLine = winLines.find(line => line.includes('mCurrentFocus') || line.includes('mFocusedApp'));
+      if (focusLine && !focusLine.includes('null')) {
+        return focusLine.trim();
+      }
+    }
+
+    return 'Unknown Activity (No match found in dumpsys)';
   } catch (error: any) {
     throw new Error(`Top Activityの取得に失敗しました: ${error.message}`);
   }
