@@ -37,6 +37,13 @@ const server = new Server(
 );
 
 // Define Schemas for the tools
+
+const GetScreenStateSchema = z.object({
+  includeXml: z.boolean().optional().default(true).describe('If false, skips returning the UI Hierarchy XML. Use this if you only need the image.'),
+  includeImage: z.boolean().optional().default(true).describe('If false, skips returning the base64 image. Useful if you only need the XML/coordinates.'),
+  searchQuery: z.string().optional().describe('If specified, returns only UI elements containing this text (in text, content-desc, class, or resource-id) along with their bounds.'),
+});
+
 const TapSchema = z.object({
   x: z.number().int().describe('X coordinate on the screen'),
   y: z.number().int().describe('Y coordinate on the screen'),
@@ -73,8 +80,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: 'get_screen_state',
-        description: 'スクリーンショットと現在のUI構造(View Hierarchy XML)を取得します。画面の状態を確認し、次にタップすべき要素を見つけるために使用してください。',
-        inputSchema: { type: 'object', properties: {} },
+        description: 'スクリーンショットと現在のUI構造(View Hierarchy XML)を取得します。引数を使って検索文字で絞り込んだり、不要な画像/XMLの出力を行わない設定が可能です。',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            includeXml: { type: 'boolean', description: 'If false, skips returning the UI Hierarchy XML. Default is true.' },
+            includeImage: { type: 'boolean', description: 'If false, skips returning the base64 image. Default is true.' },
+            searchQuery: { type: 'string', description: 'If specified, returns only UI elements containing this text along with their bounds.' },
+          },
+        },
       },
       {
         name: 'tap',
@@ -187,22 +201,44 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     if (name === 'get_screen_state') {
-      const xml = await getUiHierarchy();
-      const base64Image = await getScreenshotBase64();
+      const parsed = GetScreenStateSchema.safeParse(args);
+      if (!parsed.success) {
+        throw new McpError(ErrorCode.InvalidParams, `Invalid arguments: ${parsed.error.message}`);
+      }
+      const { includeXml, includeImage, searchQuery } = parsed.data;
 
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `現在の画面のView Hierarchy (XML):\n${xml}\n\n※この構成とスクリーンショットの画像を合わせて判断し、操作したい要素の bounds="[x1,y1][x2,y2]" から座標を計算してください。`,
-          },
-          {
+      const results = [];
+      
+      // 画像が必要な場合
+      if (includeImage) {
+        try {
+          const base64Img = await getScreenshotBase64();
+          results.push({
             type: 'image',
-            data: base64Image,
-            mimeType: 'image/png',
-          },
-        ],
-      };
+            data: base64Img,
+            mimeType: 'image/png'
+          });
+        } catch (e: any) {
+          results.push({ type: 'text', text: `[Error taking screenshot: ${e.message}]` });
+        }
+      }
+
+      // XMLが必要な場合、または検索クエリがある場合
+      if (includeXml || searchQuery) {
+        try {
+          const hierarchy = await getUiHierarchy({ searchQuery });
+          const prefix = searchQuery ? `Found Elements matching "${searchQuery}":` : `UI Hierarchy (Optimized for Tokens):\n※この構成と画像を合わせて判断し、操作したい要素の bounds="[x1,y1][x2,y2]" から座標を計算してください。`;
+          results.push({ type: 'text', text: `${prefix}\n${hierarchy}` });
+        } catch (e: any) {
+          results.push({ type: 'text', text: `[Error getting UI hierarchy: ${e.message}]` });
+        }
+      }
+
+      if (results.length === 0) {
+        return { content: [{ type: 'text', text: 'No content requested.' }] };
+      }
+
+      return { content: results as any };
     }
 
     if (name === 'tap') {

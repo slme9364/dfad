@@ -48,13 +48,34 @@ export async function getScreenshotBase64(): Promise<string> {
 
 /**
  * Retrieves the current UI hierarchy (Window Dump) as an XML string.
+ * Optimized to remove unnecessary attributes to save tokens, and optionally filters by search query.
  */
-export async function getUiHierarchy(): Promise<string> {
+export async function getUiHierarchy(options?: { searchQuery?: string }): Promise<string> {
   try {
     // 1. Create UI dump on device
     await adbExec('shell uiautomator dump /sdcard/window_dump.xml');
     // 2. Read the dump from the device (returns stdout text)
-    const xml = await adbExec('shell cat /sdcard/window_dump.xml');
+    let xml = await adbExec('shell cat /sdcard/window_dump.xml');
+
+    // Remove unnecessary attributes to save tokens.
+    // Keep only class, text, content-desc, resource-id, and bounds.
+    xml = xml.replace(/\s+([a-zA-Z\-]+)="([^"]*)"/g, (match, attr, val) => {
+      if (['class', 'text', 'content-desc', 'resource-id', 'bounds'].includes(attr)) {
+        // Strip empty values for everything except bounds and class to save even more space
+        if (val === '' && attr !== 'bounds' && attr !== 'class') return '';
+        return match;
+      }
+      return '';
+    });
+
+    // If searchQuery is provided, extract only matching node tags
+    if (options?.searchQuery) {
+      const q = options.searchQuery.toLowerCase();
+      const nodes = xml.match(/<node[^>]*>/g) || [];
+      const matched = nodes.filter(n => n.toLowerCase().includes(q));
+      return matched.length > 0 ? matched.join('\n') : 'No matching elements found.';
+    }
+
     return xml;
   } catch (error: any) {
     throw new Error(`UI構成の取得に失敗しました: ${error.message}`);
