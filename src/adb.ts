@@ -128,11 +128,26 @@ export async function clearLogcat(): Promise<void> {
 }
 
 /**
- * Gets recent logcat output, optionally filtered by text.
+ * Gets recent logcat output, optionally filtered by text and/or package name.
  */
-export async function getLogcat(lines: number = 200, filterText?: string): Promise<string> {
+export async function getLogcat(lines: number = 200, filterText?: string, packageName?: string): Promise<string> {
   try {
-    const result = await adbExec(`logcat -d -t ${lines}`);
+    let pidOption = '';
+    if (packageName) {
+      try {
+        const pids = await adbExec(`shell pidof ${packageName}`);
+        const mainPid = pids.trim().split(/\s+/)[0];
+        if (mainPid) {
+          pidOption = ` --pid=${mainPid}`;
+        } else {
+          return `No log available: Process for package '${packageName}' is not running.`;
+        }
+      } catch (e) {
+        return `No log available: Process for package '${packageName}' is not running.`;
+      }
+    }
+
+    const result = await adbExec(`logcat -d -t ${lines}${pidOption}`);
     let linesArr = result.split('\n');
     if (filterText) {
       const lowerFilter = filterText.toLowerCase();

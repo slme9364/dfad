@@ -64,6 +64,7 @@ const LaunchAppSchema = z.object({
 const GetLogcatSchema = z.object({
   lines: z.number().int().optional().describe('Number of recent log lines to fetch. Default is 200.'),
   filterText: z.string().optional().describe('Optional text to filter the log output. Case-insensitive.'),
+  packageName: z.string().optional().describe('If provided, filters the logcat to only show logs from this app package.'),
 });
 
 const SwipeSchema = z.object({
@@ -148,6 +149,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             lines: { type: 'number', description: 'Number of recent log lines to fetch. Default is 200.' },
             filterText: { type: 'string', description: 'Optional text to filter the log output. Case-insensitive.' },
+            packageName: { type: 'string', description: 'If provided, filters the logcat to only show logs from this app package.' },
           },
         },
       },
@@ -287,7 +289,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!parsed.success) {
         throw new McpError(ErrorCode.InvalidParams, `Invalid arguments: ${parsed.error.message}`);
       }
-      const logs = await getLogcat(parsed.data.lines, parsed.data.filterText);
+      const logs = await getLogcat(parsed.data.lines, parsed.data.filterText, parsed.data.packageName);
       return { content: [{ type: 'text', text: logs || 'No matching logs found.' }] };
     }
 
