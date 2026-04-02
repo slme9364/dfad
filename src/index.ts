@@ -20,6 +20,8 @@ import {
   getLogcat,
   startRecording,
   stopRecording,
+  swipe,
+  getTopActivity,
 } from './adb.js';
 
 const server = new Server(
@@ -55,6 +57,14 @@ const LaunchAppSchema = z.object({
 const GetLogcatSchema = z.object({
   lines: z.number().int().optional().describe('Number of recent log lines to fetch. Default is 200.'),
   filterText: z.string().optional().describe('Optional text to filter the log output. Case-insensitive.'),
+});
+
+const SwipeSchema = z.object({
+  x1: z.number().int().describe('Start X coordinate'),
+  y1: z.number().int().describe('Start Y coordinate'),
+  x2: z.number().int().describe('End X coordinate'),
+  y2: z.number().int().describe('End Y coordinate'),
+  duration: z.number().int().optional().describe('Duration in ms for the swipe. Set higher (e.g. 1000) for long press.'),
 });
 
 // Register tools list
@@ -135,6 +145,26 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'stop_recording',
         description: '開始した画面録画を停止し、ローカルPCのrecordsディレクトリ内にmp4ファイルとして自動保存します。',
+        inputSchema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'swipe',
+        description: '画面上の指定された座標間を操作します（スワイプ、スクロール、長押しなど）。指定した時間(ms)をかけて始点から終点へスワイプします。',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            x1: { type: 'number', description: 'Start X coordinate' },
+            y1: { type: 'number', description: 'Start Y coordinate' },
+            x2: { type: 'number', description: 'End X coordinate' },
+            y2: { type: 'number', description: 'End Y coordinate' },
+            duration: { type: 'number', description: 'Duration in ms. Default is 300. Use e.g. 1000 for slow scroll or long press.' },
+          },
+          required: ['x1', 'y1', 'x2', 'y2'],
+        },
+      },
+      {
+        name: 'get_top_activity',
+        description: '現在、画面の最前面で実行されているパッケージ(アプリ)名とActivity情報を取得します。想定外の画面に移動していないかの確認に便利です。',
         inputSchema: { type: 'object', properties: {} },
       },
     ],
@@ -233,6 +263,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === 'stop_recording') {
       const savedPath = await stopRecording();
       return { content: [{ type: 'text', text: `Recording stopped. The video has been saved locally to: ${savedPath}` }] };
+    }
+
+    if (name === 'swipe') {
+      const parsed = SwipeSchema.safeParse(args);
+      if (!parsed.success) {
+        throw new McpError(ErrorCode.InvalidParams, `Invalid arguments: ${parsed.error.message}`);
+      }
+      const { x1, y1, x2, y2, duration } = parsed.data;
+      await swipe(x1, y1, x2, y2, duration);
+      return { content: [{ type: 'text', text: `Swiped from (${x1}, ${y1}) to (${x2}, ${y2}) for ${duration || 300}ms` }] };
+    }
+
+    if (name === 'get_top_activity') {
+      const activityStr = await getTopActivity();
+      return { content: [{ type: 'text', text: `Top Activity: ${activityStr}` }] };
     }
 
     throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);

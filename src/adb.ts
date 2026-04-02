@@ -69,6 +69,13 @@ export async function tap(x: number, y: number): Promise<void> {
 }
 
 /**
+ * Swipes from (x1, y1) to (x2, y2) over the specified duration (ms).
+ */
+export async function swipe(x1: number, y1: number, x2: number, y2: number, duration: number = 300): Promise<void> {
+  await adbExec(`shell input swipe ${x1} ${y1} ${x2} ${y2} ${duration}`);
+}
+
+/**
  * Inputs text. Spaces might need escaping depending on the shell,
  * but for simplicity we wrap it in quotes.
  */
@@ -113,6 +120,20 @@ export async function getLogcat(lines: number = 200, filterText?: string): Promi
     return linesArr.join('\n');
   } catch (error: any) {
     throw new Error(`Logcatの取得に失敗しました: ${error.message}`);
+  }
+}
+
+/**
+ * Retrieves the currently focused package and activity.
+ */
+export async function getTopActivity(): Promise<string> {
+  try {
+    const out = await adbExec('shell dumpsys window windows');
+    const lines = out.split('\n');
+    const focusLine = lines.find(line => line.includes('mCurrentFocus') || line.includes('mFocusedApp'));
+    return focusLine ? focusLine.trim() : 'Unknown Activity';
+  } catch (error: any) {
+    throw new Error(`Top Activityの取得に失敗しました: ${error.message}`);
   }
 }
 
